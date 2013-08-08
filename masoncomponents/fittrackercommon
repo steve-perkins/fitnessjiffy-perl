@@ -1,0 +1,56 @@
+<%perl>
+sub getLayout {
+</%perl>
+	<style>
+	<!--
+body {
+	background: #5B211A repeat-x center top;
+	color: #000;
+	font-family: "Hoefler Text", Georgia, "Times New Roman", Times, serif;
+	margin: 0;
+	padding: 0;
+	text-align: center;
+	font-size: medium !important;
+	line-height: normal !important;
+}
+#border {
+	width: 1000px;
+	margin: 0 auto 0 auto;
+	background: #F2E2C1 repeat-y center top;
+	padding: 0 15px;
+	border: 10px solid #411213;
+	}
+/* Tan IE5 box model fix
+	Hides from IE5-mac \*/
+* html #rap {
+	width: 730px;
+	w\idth: 800px;
+}	
+	-->	
+	</style>
+	<div id="border"><br/>
+<%perl>
+	return "";
+}
+
+sub getNavigationMenu {
+</%perl>	
+	<table style="width: 100%; border-top: 2px solid #000000; border-bottom: 2px solid #000000;"><tr>
+		<td width="25%" align="center"><a href="fittracker.cgi?page=user">User</a></td>
+		<td width="25%" align="center"><a href="fittracker.cgi?page=diet">Diet</a></td>
+		<td width="25%" align="center"><a href="fittracker.cgi?page=exercise">Exercise</a></td>
+		<td width="25%" align="center"><a href="fittracker.cgi?page=weight">Weight</a></td>
+	</tr></table><br/>
+<%perl>
+	return "";
+}
+
+sub isLeapYear {
+	my $year = shift;
+	return 0 if $year % 4;
+	return 1 if $year % 100;
+	return 0 if $year % 400;
+	return 1;
+}
+</%perl>	
+

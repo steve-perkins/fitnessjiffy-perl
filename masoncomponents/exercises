@@ -1,0 +1,153 @@
+<& /masoncomponents/masoncommon &>
+<& /masoncomponents/fittrackercommon &>
+<%perl>
+	use FitTracker::User;
+	use FitTracker::Exercise;
+	my $USER = 'FitTracker::User';
+	my $EXERCISE = 'FitTracker::Exercise';
+
+	# FETCH USER, OR REDIRECT TO USER PAGE IF NO USER CURRENTLY SELECTED
+	my $user;
+	my $userCookie    = &getCookie( 'FITTRACKER_USER' );
+	if( defined( $userCookie ) ) {
+		$user = $USER->getById( $userCookie );
+	} else {
+		$m->redirect("fittracker.cgi?page=user");
+	}
+
+	my $exercise;
+
+	my $exerciseIdParameter = &getParam( 'ExerciseID' );
+	my $actionParameter = &getParam( 'Action' );
+	my $exerciseNameParameter = &getParam( 'ExerciseName' );
+	my $exerciseCaloriesParameter = &getParam( 'ExerciseCalories' );
+	my $monthParameter = &getParam( 'Month' );
+	my $dayParameter = &getParam( 'Day' );
+	my $yearParameter = &getParam( 'Year' );
+
+	if( $actionParameter eq "Create / Update Exercise" 
+			&& defined( $exerciseNameParameter )
+			&& defined( $exerciseCaloriesParameter ) ) {
+		# CREATE OR UPDATE THIS EXERCISE
+		$exercise = $EXERCISE->new( $exerciseNameParameter, $exerciseCaloriesParameter);
+	} elsif( $actionParameter eq "Add to Exercises Performed on This Date:" 
+			&& defined( $exerciseNameParameter )
+			&& defined( $monthParameter )
+			&& defined( $dayParameter )
+			&& defined( $yearParameter ) ) {
+		$exercise = $EXERCISE->getByName( $exerciseNameParameter );
+		$user->addExercisePerformed( $exercise, "$yearParameter-$monthParameter-$dayParameter", 1 );
+		$m->redirect("fittracker.cgi?page=exercise&Month=$monthParameter&Day=$dayParameter&Year=$yearParameter");
+	} elsif( $actionParameter eq "Add Exercise" 
+			&& defined( $exerciseIdParameter )
+			&& defined( $monthParameter )
+			&& defined( $dayParameter )
+			&& defined( $yearParameter ) ) {
+		$exercise = $EXERCISE->getById( $exerciseIdParameter );
+		$user->addExercisePerformed( $exercise, "$yearParameter-$monthParameter-$dayParameter", 1 );
+		$m->redirect("fittracker.cgi?page=exercise");
+	}
+	if( $actionParameter eq "Delete Exercise" && $exerciseNameParameter ne "NEW EXERCISE" ) {
+		# DELETE THIS EXERCISE
+		$exercise = $EXERCISE->getByName( $exerciseNameParameter );
+		$exercise->delete();
+		$exercise = undef;
+	}
+
+	# INITIALIZE VARIABLES USED IN FORM FIELDS BELOW
+	my @allExercises = $EXERCISE->getAll();
+	
+	if( !defined( $exercise ) && defined( $exerciseIdParameter ) && $actionParameter ne "Delete Exercise" ) {
+		$exercise = $EXERCISE->getById( $exerciseIdParameter );
+	} 
+		
+</%perl>
+
+<html>
+<head><title>Add / Manage Exercises</title></head>
+<body bgcolor="#5B211A">
+<center>
+	<% &getLayout() %>
+	<% &getNavigationMenu() %>
+	<br/><b><u>Exercises:</u></b><br/><br/>
+	<form>
+		<input type="hidden" name="page" value="exercises">
+		<select name="ExerciseID">
+			<option value=''>NEW EXERCISE</option>
+<%perl>
+	for( my $exerciseIndex = 0; $exerciseIndex < @allExercises; $exerciseIndex++ ) {
+		my $exerciseBuffer = $allExercises[$exerciseIndex];
+		print "<option value='". $exerciseBuffer->getId() . "'";
+		if( defined( $exercise ) && $exercise->getId() == $exerciseBuffer->getId() ) { print " selected"; }
+		print ">" . $exerciseBuffer->getName() . "</option>\n";
+	}
+</%perl>
+		</select>
+		<input type="submit" value="Select Exercise">
+	</form>		
+	<form>
+<%perl>
+	my $id;
+	my $name;
+	my $caloriesPerHour;
+	if( defined( $exercise ) ) { 
+		$id = $exercise->getId();
+		$name = $exercise->getName();
+		$caloriesPerHour = $exercise->getCaloriesPerHour();
+	}
+	my $month = ('01','02','03','04','05','06','07','08','09','10','11','12')[(localtime)[4]];
+	my $day = (localtime)[3];
+	my $year = (localtime)[5] + 1900;
+</%perl>	
+	<input type="hidden" name="page" value="exercises">
+	<input type="hidden" name="ExerciseID" value="<% $id %>">
+	<table width="50%">
+	<tr><td valign="top">
+		Name: </td><td><input type="text" size="50" maxlength="50" name="ExerciseName" value="<% $name %>"><br/>
+		<font size="-2">
+		<center>(REMINDER: Avoid quote-marks and other special characters that could case database problems.  Also, 
+		changing the name of an existing exercise creates a new record rather than updating that record.)</center>
+		</font>
+	</td></tr>
+	<tr><td>Calories Per Hour: </td><td>
+		<input type="text" size="4" name="ExerciseCalories" value="<% $caloriesPerHour %>">
+	</td></tr>
+	<tr><td colspan="2" align="center">
+		<br/><input type="submit" name="Action" value="Create / Update Exercise">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		<input type="submit" name="Action" value="Delete Exercise" onclick="javascript:return confirm('Are you SURE you want to delete this exercise?');">
+	</td></tr>
+	<tr><td colspan="2" align="center">
+		<br/>
+		<input type="submit" name="Action" value="Add to Exercises Performed on This Date:">
+		<select name="Month">
+			<option value="01" <%perl>if( $month eq '01' ) { print "selected" }</%perl>>January</option>
+			<option value="02" <%perl>if( $month eq '02' ) { print "selected" }</%perl>>February</option>
+			<option value="03" <%perl>if( $month eq '03' ) { print "selected" }</%perl>>March</option>
+			<option value="04" <%perl>if( $month eq '04' ) { print "selected" }</%perl>>April</option>
+			<option value="05" <%perl>if( $month eq '05' ) { print "selected" }</%perl>>May</option>
+			<option value="06" <%perl>if( $month eq '06' ) { print "selected" }</%perl>>June</option>
+			<option value="07" <%perl>if( $month eq '07' ) { print "selected" }</%perl>>July</option>
+			<option value="08" <%perl>if( $month eq '08' ) { print "selected" }</%perl>>August</option>
+			<option value="09" <%perl>if( $month eq '09' ) { print "selected" }</%perl>>September</option>
+			<option value="10" <%perl>if( $month eq '10' ) { print "selected" }</%perl>>October</option>
+			<option value="11" <%perl>if( $month eq '11' ) { print "selected" }</%perl>>November</option>
+			<option value="12" <%perl>if( $month eq '12' ) { print "selected" }</%perl>>December</option>
+		</select>
+		<select name="Day">
+<%perl>
+	for( my $dayIndex = 1; $dayIndex <= 31; $dayIndex++ ) {
+		my $printDay = $dayIndex;
+		if( $printDay < 10 ) { $printDay = "0$printDay"; }
+		print "<option value='$printDay'";
+		if( $dayIndex == $day ) { print "selected"; }
+		print ">$printDay</option>\n";
+	}
+</%perl>
+		</select>
+		<input type="text" name="Year" maxlength="4" size="4" value="<% $year %>">
+	</td></tr>
+	</table>
+	</form>
+</center>
+</body>
+</html>

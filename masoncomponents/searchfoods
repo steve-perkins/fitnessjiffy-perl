@@ -1,0 +1,50 @@
+<& /masoncomponents/masoncommon &>
+<& /masoncomponents/fittrackercommon &>
+<%perl>
+	use FitTracker::User;
+	use FitTracker::Food;
+	my $USER = 'FitTracker::User';
+	my $FOOD = 'FitTracker::Food';
+
+	# FETCH USER, OR REDIRECT TO USER PAGE IF NO USER CURRENTLY SELECTED
+	my $user;
+	my $userCookie    = &getCookie( 'FITTRACKER_USER' );
+	if( defined( $userCookie ) ) {
+		$user = $USER->getById( $userCookie );
+	} else {
+		$m->redirect("fittracker.cgi?page=user");
+	}
+
+	my $foodNameParameter = &getParam( 'FoodName' );
+	if( !(defined( $foodNameParameter )) ) {
+		$foodNameParameter = '';
+	}
+	print STDERR "Food name == $foodNameParameter\n";
+
+	# INITIALIZE VARIABLES USED IN FORM FIELDS BELOW
+	my @foods = $FOOD->getAllMatchingName( $foodNameParameter );
+</%perl>
+
+<html>
+<head><title>Food Search Results</title></head>
+<body bgcolor="#5B211A">
+<center>
+	<% &getLayout() %>
+	<% &getNavigationMenu() %>
+	<br/>		
+	<form method="get">
+		<input type="hidden" name="page" value="searchfoods">
+		<input type="text" name="FoodName">
+		<input type="submit" value="Search Foods">
+	</form>
+	<table>
+<%perl>
+	foreach my $food ( @foods ) {
+		print "<tr><td><a href='fittracker.cgi?page=foods&FoodID=" . $food->getId() . "'>" . $food->getName() . "</a><br/><br/></td></tr>\n";
+	}
+</%perl>
+	</table>
+<br/><br/>	
+</center>
+</body>
+</html>

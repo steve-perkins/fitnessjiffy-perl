@@ -1,0 +1,61 @@
+<%perl>
+	sub getCookie {
+		my $cookieName = shift;
+		my %headers = $r->headers_in;
+		my @keys = keys( %headers );
+		foreach my $name ( @keys ) {
+			if( $name eq 'Cookie') {
+				my @pair = split( '=', $headers{$name} );
+				if( $pair[0] eq $cookieName ) {
+					return $pair[1];
+				}
+			}
+		}
+	}
+	
+	sub setCookie {
+		my $name = shift;
+		my $value = shift;
+		my $expires = shift;
+		my $path = shift;
+		if( !defined( $expires ) ) {
+			$expires = '+4h';
+		}
+		if( !defined( $path ) ) {
+			$expires = '/';
+		}
+		my $cookie = CGI::cookie(
+			-name    => $name,
+			-value   => $value,
+			-expires => $expires,
+			-path    => $path
+		);
+		$r->header_out('Set-cookie' => $cookie);
+	}
+	
+	sub getParam {
+		my $name = shift;
+		my %params = $r->params;
+		return $params{$name};
+	}
+
+	sub getAllParams {
+		return $r->params;
+	}	
+	
+	sub getHeader {
+		my $name = shift;
+		my %headers = $r->headers_in;
+		return $headers{$name};
+	}
+	
+	sub getAllHeaders {
+		return $r->headers_in;
+	}
+	
+	sub setHeader {
+		my $name = shift;
+		my $value = shift;
+		$r->header_out( $name => $value );
+	}	
+</%perl>

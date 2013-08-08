@@ -1,0 +1,370 @@
+<& /masoncomponents/masoncommon &>
+<& /masoncomponents/fittrackercommon &>
+<%perl>
+	use FitTracker::DataAccess;
+	use FitTracker::User;
+	my $DATAACCESS = 'FitTracker::DataAccess';
+	my $USER = 'FitTracker::User';
+	my $WEIGHT = 'FitTracker::Weight';
+
+	# FETCH USER, OR REDIRECT TO USER PAGE IF NO USER CURRENTLY SELECTED
+	my $user;
+	my $userCookie    = &getCookie( 'FITTRACKER_USER' );
+	print "userCookie == " + $userCookie + "\n";
+	if( defined( $userCookie ) ) {
+		$user = $USER->getById( $userCookie );
+	} else {
+		$m->redirect("fittracker.cgi?page=user");
+	}
+	
+	my $monthParameter = &getParam( 'Month' );
+	my $dayParameter = &getParam( 'Day' );
+	my $yearParameter = &getParam( 'Year' );
+	my $dateRangeParameter = &getParam( 'DateRange' );
+	my $customStateDateParameter = &getParam( 'CustomStartDate' );
+	my $customEndDateParameter = &getParam( 'CustomEndDate' );
+	my $weightParameter = &getParam( 'Weight' );
+	my $actionParameter = &getParam( 'Action' );
+	my $additionalInfoParameter = &getParam( 'AdditionalInfo' );
+	if( !(defined( $additionalInfoParameter ) ) ) {
+		$additionalInfoParameter = "NetCalories";
+	}
+	
+	# INITIALIZE VARIABLES USED IN FORM FIELDS BELOW
+	my $month;
+	my $day;
+	my $year;
+	my $date;
+	my $weight;
+	if( defined( $weightParameter ) ) {
+		$weight = $weightParameter;
+	} else {
+		print STDERR "user == " + $user + "\n";
+		$weight = $user->getCurrentWeight()->getPounds();
+	}	
+	if( !defined( $monthParameter ) ) {
+		$month = ('01','02','03','04','05','06','07','08','09','10','11','12')[(localtime)[4]];
+	} else {
+		$month = $monthParameter;
+	}
+	if( !defined( $dayParameter ) ) {
+		$day = (localtime)[3];
+		if( $day < 10 ) {
+			$day = "0$day";
+		}
+	} else {
+		$day = $dayParameter;
+	}
+	if( !defined( $yearParameter ) ) {
+		$year = (localtime)[5] + 1900;
+	} else {
+		$year = $yearParameter;
+	}
+	$date = "$year-$month-$day";
+	
+	# PROCESS FORM ACTIONS
+	if( $actionParameter eq "Update Weight for This Date" ) {
+		# UPDATING A WEIGHT MEASURMENT
+		my $weightObject = $WEIGHT->new( $user->getId(), $date, $weight );
+		if( defined( $weightObject ) ) { $weight = $weightObject->getPounds(); }
+	} elsif( $actionParameter eq "Change Date Without Update" ) {
+		# CHANGE THIS DATE WITHOUT UPDATING ANY WEIGHT RECORDS
+		my $weightObject = $WEIGHT->getByPrimaryKey( $user->getId(), $date );
+		if( defined( $weightObject ) ) { $weight = $weightObject->getPounds(); }
+	} 	
+	
+	if( !defined( $dateRangeParameter ) ) {
+		$dateRangeParameter = 'OneMonth';
+	}
+	if( !defined( $customStateDateParameter ) ) {
+		#$customStateDateParameter = 'YYYY-MM-DD';
+		$customStateDateParameter = '2008-01-23';
+	}
+	if( !defined( $customEndDateParameter ) ) {
+		$customEndDateParameter = "$date";
+	}
+	
+	my $daysToChart;
+	my $numOfWeeks;
+	if( $dateRangeParameter eq 'OneWeek' ) {
+		$daysToChart = 7;
+		$numOfWeeks = 1;
+	} elsif( $dateRangeParameter eq 'TwoWeeks' ) {
+		$daysToChart = 14;
+		$numOfWeeks = 2;
+	} elsif( $dateRangeParameter eq 'OneMonth' ) {
+		$daysToChart = 30;
+		$numOfWeeks = 4.286;
+	} elsif( $dateRangeParameter eq 'SixMonths' ) {
+		$daysToChart = 180;
+		$numOfWeeks = 26;
+	} elsif( $dateRangeParameter eq 'OneYear' ) {
+		$daysToChart = 365;
+		$numOfWeeks = 52;
+	} elsif( $dateRangeParameter eq 'CUSTOM' ) {
+		my $database = $DATAACCESS->getDatabaseConnection();
+		my $sql = "SELECT julianday('$customEndDateParameter') - julianday('$customStateDateParameter');";
+		my $resultSet = $database->selectall_arrayref($sql);
+		foreach (@$resultSet) {
+			$daysToChart = $_->[0];
+			$daysToChart = int($daysToChart + .5) + 1;
+			$numOfWeeks = $daysToChart / 7;
+		}
+	} 
+	my $maxWeight;
+	my $minWeight;
+	my $startingWeight;
+	my $endingWeight;
+	my $weeklyWeightChange;
+	my $xValues = '';
+	my $x2Values = '';
+	my $yValues = '';
+	my $minDailyCalories = 0;
+	my $maxDailyCalories = 0;
+	my $totalWeights = 0;
+	my $totalNetCalories = 0;
+	my $totalPoints = 0;
+	my $minDailyPoints = 0;
+	my $maxDailyPoints = 0;
+	for( my $index = $daysToChart - 1; $index >= 0; $index-- ) {
+		my $pastDay = time() - ( 24 * 60 * 60 * $index );
+		my $month = ('01','02','03','04','05','06','07','08','09','10','11','12')[( localtime( $pastDay ) )[4]];
+		my $day = (localtime( $pastDay ) )[3];
+		if( $day < 10 ) {
+			$day = "0$day";
+		}
+		my $year = (localtime( $pastDay ) )[5] + 1900;
+		$yValues .= "$month/$day";
+		if( $index > 0 ) { $yValues .= ","; }
+		my $dailyPoints = $user->getPointsForDay("$year-$month-$day") - $user->getExercisePointsForDay("$year-$month-$day");
+		$totalPoints += $dailyPoints;
+		my $dailyCalories = ( sprintf( "%d", $user->getCaloriesForDay("$year-$month-$day") ) - sprintf( "%d", $user->getExerciseCaloriesForDay("$year-$month-$day") ) );
+		if( $dailyCalories < $minDailyCalories || $minDailyCalories == 0 ) { $minDailyCalories = $dailyCalories; }
+		if( $dailyCalories > $maxDailyCalories ) { $maxDailyCalories = $dailyCalories; }
+		if( $dailyPoints < $minDailyPoints || $minDailyPoints == 0 ) { $minDailyPoints = $dailyPoints; }
+		if( $dailyPoints > $maxDailyPoints ) { $maxDailyPoints = $dailyPoints; }
+		
+		if( $additionalInfoParameter eq "NetCalories" ) {
+			$x2Values .= $dailyCalories;
+		} else {
+			$x2Values .= $dailyPoints;
+		}
+
+		my $sql = "SELECT MAX(DATE), POUNDS FROM WEIGHT WHERE USER_ID = " . $user->getId() . " AND DATE <= '$year-$month-$day';";
+		my $database = $DATAACCESS->getDatabaseConnection();
+		my $resultSet = $database->selectall_arrayref($sql);
+		if ( @$resultSet > 0 ) {
+			$xValues .= (@$resultSet)[0]->[1];
+			$totalWeights += (@$resultSet)[0]->[1]; 
+			$totalNetCalories += $dailyCalories;
+			if( (@$resultSet)[0]->[1] == 0 && ( $index == $daysToChart || $index == 0 ) ) {
+				$startingWeight = "Available data doesn't cover this date range"; 
+				$endingWeight = "Available data doesn't cover this date range"; 
+				$weeklyWeightChange = "Available data doesn't cover this date range"; 
+			} elsif( $index == $daysToChart - 1 ) { 
+				$startingWeight = (@$resultSet)[0]->[1]; 
+			} elsif( $index == 0 ) { 
+				$endingWeight = (@$resultSet)[0]->[1]; 
+			}
+			if( !(defined( $maxWeight ) ) || (@$resultSet)[0]->[1] > $maxWeight ) { $maxWeight = (@$resultSet)[0]->[1]; }
+			if( !(defined( $minWeight ) ) || (@$resultSet)[0]->[1] < $minWeight ) { $minWeight = (@$resultSet)[0]->[1]; }
+		} else {
+			$xValues .= "null";
+			if( $index == $daysToChart || $index == 0 ) { 
+				$startingWeight = "Available data doesn't cover this date range"; 
+				$endingWeight = "Available data doesn't cover this date range"; 
+				$weeklyWeightChange = "Available data doesn't cover this date range"; 
+			}
+		}
+		if( $index > 0 ) { 
+			$xValues .= ","; 
+			$x2Values .= ","; 
+		}		
+	}
+	my $averageWeight = sprintf( "%.1f", ( $totalWeights / $daysToChart ) );
+	my $averageNetCalories = sprintf( "%d", ( $totalNetCalories / $daysToChart ) );
+	if( $weeklyWeightChange ne "Available data doesn't cover this date range" ) { 
+		$weeklyWeightChange = sprintf( "%.1f", ( ( $endingWeight - $startingWeight ) / $numOfWeeks ) );
+	} 
+	my $averagePoints = sprintf( "%.1f", ( $totalPoints / $daysToChart ) );
+
+	my $xAxisSteps = 3;
+	if( $daysToChart > 30 ) {
+		$xAxisSteps = 7;
+	}
+	if( $daysToChart > 90 ) {
+		$xAxisSteps = 30;
+	}	
+</%perl>
+
+<html>
+<head><title>Weight</title></head>
+<body bgcolor="#5B211A">
+<center>
+	<% &getLayout() %>
+	<% &getNavigationMenu() %>
+	<form>
+	<table width="800"><tr><td width="600" align="right" valign="top">
+	<input type="hidden" name="page" value="weight">
+	<br/>Weight is <input type="text" size="3" name="Weight" value="<% $weight %>"> on:
+		<select name="Month">
+			<option value="01" <%perl>if( $month eq '01' ) { print "selected" }</%perl>>January</option>
+			<option value="02" <%perl>if( $month eq '02' ) { print "selected" }</%perl>>February</option>
+			<option value="03" <%perl>if( $month eq '03' ) { print "selected" }</%perl>>March</option>
+			<option value="04" <%perl>if( $month eq '04' ) { print "selected" }</%perl>>April</option>
+			<option value="05" <%perl>if( $month eq '05' ) { print "selected" }</%perl>>May</option>
+			<option value="06" <%perl>if( $month eq '06' ) { print "selected" }</%perl>>June</option>
+			<option value="07" <%perl>if( $month eq '07' ) { print "selected" }</%perl>>July</option>
+			<option value="08" <%perl>if( $month eq '08' ) { print "selected" }</%perl>>August</option>
+			<option value="09" <%perl>if( $month eq '09' ) { print "selected" }</%perl>>September</option>
+			<option value="10" <%perl>if( $month eq '10' ) { print "selected" }</%perl>>October</option>
+			<option value="11" <%perl>if( $month eq '11' ) { print "selected" }</%perl>>November</option>
+			<option value="12" <%perl>if( $month eq '12' ) { print "selected" }</%perl>>December</option>
+		</select>
+		<select name="Day">
+<%perl>
+	my $daysInMonth;
+	if( $month eq "02" && &isLeapYear( $year ) ) {
+		$daysInMonth = 29;
+	} elsif( $month eq "02" ) {
+		$daysInMonth = 28;
+	} elsif( $month eq "01" || $month eq "03" || $month eq "05" || $month eq "07" || $month eq "08" || $month eq "10" || $month eq "12" ) {
+		$daysInMonth = 31;
+	} else {
+		$daysInMonth = 30;
+	}	
+	for( my $dayIndex = 1; $dayIndex <= $daysInMonth; $dayIndex++ ) {
+		my $printDay;
+		if( $dayIndex < 10 ) {
+			$printDay = "0$dayIndex";
+		} else {
+			$printDay = $dayIndex;
+		}
+		print "<option value='$printDay'";
+		if( $day == $dayIndex ) {
+			print " selected";
+		}
+		print ">$dayIndex</option>\n";
+	}
+</%perl>
+		</select>
+		<input type="text" name="Year" maxlength="4" size="4" value="<% $year %>">
+		</td><td width="50" align="center" valign="middle">
+		<input type="submit" name="Action" value="Update Weight for This Date"><br/>
+		<input type="submit" name="Action" value="Change Date Without Update"><br/>
+		</td><td width="150" align="center" valign="middle">
+		<font size="-2">(to delete a measurement, submit a blank field)</font>
+		</td></tr></table>
+	</form>
+ 	<form>
+	<table><tr><td align="center" valign="middle">
+		<input type="hidden" name="page" value="weight">
+		<font size="-1">&nbsp;</font><br/>
+		<input type="Submit" name="Action" value="View Statistics for Date Range:">
+		<select name="DateRange">
+			<option value="OneWeek" <%perl>if( $dateRangeParameter eq "OneWeek" ) { print "selected"; }</%perl>>Last week</option>
+			<option value="TwoWeeks" <%perl>if( $dateRangeParameter eq "TwoWeeks" ) { print "selected"; }</%perl>>Last two weeks</option>
+			<option value="OneMonth" <%perl>if( $dateRangeParameter eq "OneMonth" || !defined( $dateRangeParameter ) ) { print "selected"; }</%perl>>Last month</option>
+			<option value="SixMonths" <%perl>if( $dateRangeParameter eq "SixMonths" ) { print "selected"; }</%perl>>Last six months</option>
+			<option value="OneYear" <%perl>if( $dateRangeParameter eq "OneYear" ) { print "selected"; }</%perl>>Last year</option>
+			<option value="CUSTOM" <%perl>if( $dateRangeParameter eq "CUSTOM" ) { print "selected"; }</%perl>>Custom date range:</option>
+		</select>
+	</td><td align="center" valign="middle">
+		<font size="-1">From: </font><br/>
+		<input type="text" name="CustomStartDate" size="12" maxlength="10" value="<% $customStateDateParameter %>">
+	</td><td align="center" valign="middle">
+		<font size="-1">To: </font><br/>
+		<input type="text" name="CustomEndDate" size="12" maxlength="10" value="<% $customEndDateParameter %>">
+	</td><td align="center" valign="middle">
+		<font size="-1">Additional Info: </font><br/>
+		<select name="AdditionalInfo">
+			<option value="NetCalories" <%perl>if( $additionalInfoParameter eq "NetCalories" ) { print "selected"; }</%perl>>Net Calories</option>
+			<option value="Points" <%perl>if( $additionalInfoParameter eq "Points" ) { print "selected"; }</%perl>>Points</option>
+		</select>
+	</td></tr></table>
+	</form>
+
+<div id="my_chart"></div>
+<br/>
+<table width="80%"><tr>
+	<td width="5%">&nbsp;</td>
+	<td width="25%">
+		<b>Starting weight:</b> <% $startingWeight %><br/>
+		<b>Ending weight:</b> <% $endingWeight %><br/>
+		<b>Difference:</b> <% sprintf( "%.1f", ( $startingWeight - $endingWeight ) ) %>
+	</td>
+	<td width="25%">
+		<b>Max weight:</b> <% $maxWeight %><br/>
+		<b>Min weight:</b> <% $minWeight %><br/>
+		<b>Difference:</b> <% sprintf( "%.1f", ( $maxWeight - $minWeight ) ) %>
+	</td>
+	<td width="45%">
+		<b>Average net calories:</b> <% $averageNetCalories %> calories / day<br/>
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<%perl>
+	my $calorieNeeds = $user->getDailyCalorieNeeds();
+	if( $averageNetCalories <= $calorieNeeds ) {
+		print "(deficit of " . ( $calorieNeeds - $averageNetCalories ) . " calories)<br/>\n";
+	} else {
+		print "(surplus of " . ( $averageNetCalories - $calorieNeeds ) . " calories)<br/>\n";
+	}
+</%perl>		
+		<b>Average points:</b> <% $averagePoints %>
+	</td>
+</tr></table><br/>
+<table width="80%"><tr>
+	<td width="50%" align="center"><b>Average weight:</b> <% $averageWeight %> lbs.<br/></td>
+	<td width="50%" align="center"><b>Average weight change:</b> 	 <% $weeklyWeightChange %> lbs. / week<br/></td>
+</tr></table><br/>
+<br/><br/>
+</div>
+<script type="text/javascript" src="/swfobject.js"></script>
+<script type="text/javascript">
+var so = new SWFObject("/open-flash-chart.swf", "ofc", "800", "400", "9", "#FFFFFF");
+
+so.addVariable("variables","true");
+//so.addVariable("title","My+Weight+History,{font-size: 26px;}");
+so.addVariable("x_label_style","9,#000000,0,<% $xAxisSteps %>");
+so.addVariable("x_axis_steps","<% $xAxisSteps %>");
+so.addVariable("y_ticks","5,10,11");
+so.addVariable("y2_lines","2");
+so.addVariable("show_y2","true");
+so.addVariable("line_dot","3,#000000,Weight,18,6");
+so.addVariable("values","<% $xValues %>");
+so.addVariable("values_2","<% $x2Values %>");
+so.addVariable("x_labels","<% $yValues %>");
+so.addVariable("y_min","<% $minWeight %>");
+so.addVariable("y_max","<% $maxWeight %>");
+so.addVariable("bg_colour","#FFFFFF");
+so.addVariable("x_axis_colour","#000000");
+so.addVariable("x_grid_colour","#000000");
+so.addVariable("y_axis_colour","#000000");
+so.addVariable("y_grid_colour","#000000");
+so.addVariable("tool_tip","%23x_label%23<br>%23key%23%3A+%23val%23");
+
+<%perl>
+	if( $additionalInfoParameter eq "NetCalories" ) {
+</%perl>
+so.addVariable("line_hollow_2","2,#FF0000,Net calories,18,4");
+so.addVariable("y2_min","<% $minDailyCalories %>");
+so.addVariable("y2_max","<% $maxDailyCalories %>");
+<%perl>
+	} else {
+</%perl>
+so.addVariable("line_hollow_2","2,#FF0000,Points,18,4");
+so.addVariable("y2_min","0");
+so.addVariable("y2_max","<% $maxDailyPoints %>");
+<%perl>
+	}
+</%perl>
+
+so.addParam("allowScriptAccess", "always" );//"sameDomain");
+so.write("my_chart");
+</script>
+</center>
+</body>
+</html>
+
+
